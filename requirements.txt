@@ -1,5 +1,4 @@
 pyTelegramBotAPI==4.14.0
-python-telegram-bot==20.7
 Flask==2.3.3
 requests
 beautifulsoup4
@@ -9,13 +8,8 @@ qrcode
 pytube
 yt-dlp
 openpyxl
-pandas
-numpy
-matplotlib
 PyPDF2
 python-docx
-aiohttp
 python-barcode
 faker
 python-dotenv
-urllib3

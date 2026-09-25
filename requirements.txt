@@ -1,5 +1,5 @@
-pyTelegramBotAPI==4.14.0
-Flask==2.3.3
+pyTelegramBotAPI
+Flask
 requests
 beautifulsoup4
 lxml
@@ -13,3 +13,5 @@ python-docx
 python-barcode
 faker
 python-dotenv
+user_agent
+fake_useragent

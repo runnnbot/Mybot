@@ -1,105 +1,66 @@
-import os, sys, io, threading, traceback, contextlib
-from flask import Flask
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+import telebot, sys, io, traceback, os
 
-TOKEN = os.environ.get("BOT_TOKEN")
-flask_app = Flask(__name__)
-USER_GLOBALS = {}
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+bot = telebot.TeleBot(BOT_TOKEN)
 
-# ====== اعدادات الحماية - جاهزة لك ======
-MY_ID = 2073104643
 PASSWORD = "yfyfyf12345678"
+MY_ID = 2073104643  # انت ياسر
 authorized = set()
-AUTH_FILE = "auth.txt"
+authorized.add(MY_ID) # انت تدخل مباشرة بدون باسورد حتى لو نسيته
 
-if os.path.exists(AUTH_FILE):
+def run_code(code):
+    old_out = sys.stdout
+    sys.stdout = io.StringIO()
     try:
-        with open(AUTH_FILE, "r") as f:
-            authorized.add(int(f.read().strip()))
-    except:
-        pass
-
-@flask_app.route('/')
-def home(): return "Super Runner is live!"
-
-def run_flask():
-    flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if uid!= MY_ID:
-        await update.message.reply_text("🔒 هذا البوت خاص\nارسل رمز التفعيل:")
-        return
-    if uid not in authorized:
-        await update.message.reply_text("🔒 اهلا ياسر! ارسل رمز التفعيل اولاً لتفعيل البوت:")
-        return
-    await update.message.reply_text(
-        "🔥 هلا ياسر! بوت تشغيل كل أدوات بايثون جاهز\n\n"
-        "ارسل أي كود، مثال:\n"
-        "`print('هلا')`\n"
-        "تقدر ترسل الكود عادي أو داخل ```python```\n\n"
-        "لايقاف الجلسة: /stop"
-    )
-
-async def stop_tool(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    if uid!= MY_ID:
-        return
-    if uid in USER_GLOBALS:
-        USER_GLOBALS.pop(uid, None)
-    await update.message.reply_text("🛑 تم ايقاف الاداة ومسح الجلسة، البوت لا يزال شغال ✅\nتقدر ترسل كود جديد في اي وقت.")
-
-async def runner(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    uid = update.effective_user.id
-    text = update.message.text.strip()
-
-    # --- تفعيل بالرمز ---
-    if text == PASSWORD:
-        if uid!= MY_ID:
-            await update.message.reply_text("❌ انت لست صاحب البوت")
-            return
-        authorized.add(uid)
-        try:
-            with open(AUTH_FILE, "w") as f:
-                f.write(str(uid))
-        except:
-            pass
-        await update.message.reply_text("✅ تم التفعيل بنجاح ياسر! الحين ارسل اي كود تبي تشغله")
-        return
-
-    # --- حماية ---
-    if uid!= MY_ID or uid not in authorized:
-        await update.message.reply_text("🔒 ارسل رمز التفعيل اولاً:\n`yfyfyf12345678`", parse_mode='Markdown')
-        return
-
-    code = text
-    if "```" in code:
-        parts = code.split("```")
-        code = parts[1] if len(parts) > 1 else parts[0]
-        if code.strip().startswith("python"):
-            code = code.strip()[6:].strip()
-
-    if uid not in USER_GLOBALS: USER_GLOBALS[uid] = {}
-
-    f = io.StringIO()
-    try:
-        with contextlib.redirect_stdout(f), contextlib.redirect_stderr(f):
-            exec(code, USER_GLOBALS[uid])
-        out = f.getvalue() or "✅ تم التنفيذ بدون مخرجات"
-        if len(out) > 3500: out = out[:3500] + "\n... تم القص"
-        await update.message.reply_text(f"📤 النتيجة:\n```\n{out}\n```", parse_mode='Markdown')
+        exec(code, {})
+        return sys.stdout.getvalue() or "✅ تم التشغيل"
     except Exception:
-        await update.message.reply_text(f"❌ خطأ:\n```\n{traceback.format_exc()[-3500:]}\n```", parse_mode='Markdown')
+        return traceback.format_exc()
+    finally:
+        sys.stdout = old_out
 
-def main():
-    threading.Thread(target=run_flask, daemon=True).start()
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stop", stop_tool))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, runner))
-    print("Bot started...")
-    app.run_polling()
+@bot.message_handler(commands=['start'])
+def start(m):
+    if m.chat.id == MY_ID:
+        bot.reply_to(m, f"هلا ياسر انت صاحب البوت 👋\nانت داخل تلقائي بدون باسورد\nالرمز حقك هو: {PASSWORD}\nارسل كود او ملف الحين")
+        authorized.add(m.chat.id)
+    else:
+        bot.reply_to(m, "🔒 مرحبا! هذا بوت خاص\nارسل رمز التفعيل:")
 
-if __name__ == "__main__":
-    main()
+@bot.message_handler(content_types=['text','document'])
+def all_handle(m):
+    chat_id = m.chat.id
+
+    # انت صاحب البوت - تدخل تلقائي
+    if chat_id == MY_ID:
+        authorized.add(chat_id)
+
+    if chat_id not in authorized:
+        if m.content_type == 'text' and m.text == PASSWORD:
+            authorized.add(chat_id)
+            bot.reply_to(m, "✅ تم التفعيل بنجاح!")
+        else:
+            # اي شخص غريب - ما نعطيه الرمز ابدا
+            bot.reply_to(m, "🔒 رمز خاطئ - ارسل رمز التفعيل الصحيح")
+        return
+
+    # اذا انت نسيت الباسورد اكتب /pass
+    if m.content_type == 'text' and m.text == "/pass":
+        if chat_id == MY_ID:
+            bot.reply_to(m, f"رمزك ياسر هو:\n{PASSWORD}")
+        else:
+            bot.reply_to(m, "🔒 هذا الامر لصاحب البوت فقط")
+        return
+
+    if m.content_type == 'document':
+        file_info = bot.get_file(m.document.file_id)
+        code = bot.download_file(file_info.file_path).decode('utf-8', errors='ignore')
+        res = run_code(code)
+        bot.send_message(chat_id, f"📁 نتيجة الملف {m.document.file_name}:\n{res[:4000]}")
+        return
+
+    if m.content_type == 'text':
+        res = run_code(m.text)
+        bot.send_message(chat_id, f"{res[:4000]}")
+
+bot.infinity_polling()

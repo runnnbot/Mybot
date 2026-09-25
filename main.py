@@ -1,75 +1,56 @@
-import telebot, sys, io, traceback, os, subprocess, threading, time
+import telebot
 from flask import Flask
+import threading
+import io
+import traceback
+import contextlib
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = "8860453971:AAGijyQe5MPwlIPhm084LQD2-t149h8z1C4"
+
+bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
+
+def run_python(code):
+    output = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(output):
+            with contextlib.redirect_stderr(output):
+                exec(code, {})
+        result = output.getvalue()
+        if not result:
+            result = "تم التنفيذ بنجاح ✅ (ما في مخرجات print)"
+        return result[:4000]
+    except Exception:
+        return f"خطأ ❌:\n{traceback.format_exc()[:4000]}"
+
+@bot.message_handler(content_types=['document'])
+def handle_file(message):
+    try:
+        file_info = bot.get_file(message.document.file_id)
+        downloaded = bot.download_file(file_info.file_path)
+        code = downloaded.decode('utf-8')
+        bot.reply_to(message, "جاري تشغيل الملف...")
+        result = run_python(code)
+        bot.reply_to(message, f"النتيجة:\n\n{result}")
+    except Exception as e:
+        bot.reply_to(message, f"ما قدرت اقرأ الملف: {e}")
+
+@bot.message_handler(func=lambda m: True)
+def handle_text(message):
+    code = message.text
+    if code == "/start":
+        bot.reply_to(message, "ارسل لي كود بايثون او ملف .py واشغله لك فورا 🚀")
+        return
+    result = run_python(code)
+    bot.reply_to(message, f"النتيجة:\n\n{result}")
 
 @app.route('/')
 def home():
-    return "Bot Alive 24/7 ✅"
+    return "Bot is running!"
 
-def run_flask():
-    app.run(host='0.0.0.0', port=10000)
+def run_bot():
+    bot.infinity_polling()
 
-# يشغل موقع وهمي عشان Render ما يطفي
-threading.Thread(target=run_flask, daemon=True).start()
-
-bot = telebot.TeleBot(BOT_TOKEN)
-PASSWORD = "yfyfyf12345678"
-MY_ID = 2073104643
-authorized = set([MY_ID])
-
-def run_code(code):
-    old = sys.stdout
-    sys.stdout = io.StringIO()
-    try:
-        exec(code, {})
-        return True, sys.stdout.getvalue() or "✅ تم تشغيل الاداة"
-    except ModuleNotFoundError as e:
-        lib = str(e).split("'")[1] if "'" in str(e) else "مكتبة ناقصة"
-        return False, f"MISSING:{lib}"
-    except Exception:
-        return False, traceback.format_exc()
-    finally:
-        sys.stdout = old
-
-@bot.message_handler(content_types=['text','document'])
-def handle(m):
-    chat_id = m.chat.id
-    if chat_id == MY_ID: authorized.add(chat_id)
-
-    if chat_id not in authorized:
-        if m.content_type == 'text' and m.text == PASSWORD:
-            authorized.add(chat_id)
-            bot.reply_to(m, "✅ تم التفعيل، البوت شغال 24 ساعة")
-            return
-        else:
-            bot.reply_to(m, "🔒 ارسل رمز الدخول")
-            return
-
-    txt = m.text if m.content_type == 'text' else ""
-
-    # امر التثبيت المؤقت
-    if txt.startswith("ثبت ") or txt.startswith("/install "):
-        lib = txt.split()[-1].strip()
-        bot.send_message(chat_id, f"⏳ جاري تثبيت {lib} مؤقتا...")
-        try:
-            subprocess.check_call([sys.executable, "-m", "pip", "install", lib])
-            bot.send_message(chat_id, f"✅ تم تثبيت {lib}\nالحين ارسل اداتك وتشتغل فورا\n💡 عشان توفر مساحة بتنحذف اذا طفى السيرفر")
-        except Exception as e:
-            bot.send_message(chat_id, f"❌ فشل التثبيت: {e}")
-        return
-
-    code = txt if m.content_type == 'text' else bot.download_file(bot.get_file(m.document.file_id).file_path).decode(errors='ignore')
-    if not code: return
-
-    ok, res = run_code(code)
-    if not ok and res.startswith("MISSING:"):
-        lib = res.split(":")[1]
-        bot.send_message(chat_id, f"⚠️ المكتبة ناقصة: {lib}\n\nما ثبتها عشان اوفر مساحة المجاني\nاذا تحتاجها الحين اكتب:\nثبت {lib}")
-    else:
-        bot.send_message(chat_id, res[:4000])
-
-# تشغيل البوت
-print("Bot Started 24/7...")
-bot.infinity_polling()
+if __name__ == "__main__":
+    threading.Thread(target=run_bot).start()
+    app.run(host="0.0.0.0", port=10000)

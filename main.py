@@ -7,6 +7,19 @@ TOKEN = os.environ.get("BOT_TOKEN")
 flask_app = Flask(__name__)
 USER_GLOBALS = {}
 
+# ====== اعدادات الحماية - جاهزة لك ======
+MY_ID = 2073104643
+PASSWORD = "yfyfyf12345678"
+authorized = set()
+AUTH_FILE = "auth.txt"
+
+if os.path.exists(AUTH_FILE):
+    try:
+        with open(AUTH_FILE, "r") as f:
+            authorized.add(int(f.read().strip()))
+    except:
+        pass
+
 @flask_app.route('/')
 def home(): return "Super Runner is live!"
 
@@ -14,23 +27,59 @@ def run_flask():
     flask_app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid!= MY_ID:
+        await update.message.reply_text("🔒 هذا البوت خاص\nارسل رمز التفعيل:")
+        return
+    if uid not in authorized:
+        await update.message.reply_text("🔒 اهلا ياسر! ارسل رمز التفعيل اولاً لتفعيل البوت:")
+        return
     await update.message.reply_text(
         "🔥 هلا ياسر! بوت تشغيل كل أدوات بايثون جاهز\n\n"
         "ارسل أي كود، مثال:\n"
         "`print('هلا')`\n"
-        "`import requests; print(requests.get('https://api.ipify.org').text)`\n\n"
-        "تقدر ترسل الكود عادي أو داخل ```python```"
+        "تقدر ترسل الكود عادي أو داخل ```python```\n\n"
+        "لايقاف الجلسة: /stop"
     )
 
+async def stop_tool(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    uid = update.effective_user.id
+    if uid!= MY_ID:
+        return
+    if uid in USER_GLOBALS:
+        USER_GLOBALS.pop(uid, None)
+    await update.message.reply_text("🛑 تم ايقاف الاداة ومسح الجلسة، البوت لا يزال شغال ✅\nتقدر ترسل كود جديد في اي وقت.")
+
 async def runner(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    code = update.message.text
+    uid = update.effective_user.id
+    text = update.message.text.strip()
+
+    # --- تفعيل بالرمز ---
+    if text == PASSWORD:
+        if uid!= MY_ID:
+            await update.message.reply_text("❌ انت لست صاحب البوت")
+            return
+        authorized.add(uid)
+        try:
+            with open(AUTH_FILE, "w") as f:
+                f.write(str(uid))
+        except:
+            pass
+        await update.message.reply_text("✅ تم التفعيل بنجاح ياسر! الحين ارسل اي كود تبي تشغله")
+        return
+
+    # --- حماية ---
+    if uid!= MY_ID or uid not in authorized:
+        await update.message.reply_text("🔒 ارسل رمز التفعيل اولاً:\n`yfyfyf12345678`", parse_mode='Markdown')
+        return
+
+    code = text
     if "```" in code:
         parts = code.split("```")
         code = parts[1] if len(parts) > 1 else parts[0]
         if code.strip().startswith("python"):
             code = code.strip()[6:].strip()
 
-    uid = update.effective_user.id
     if uid not in USER_GLOBALS: USER_GLOBALS[uid] = {}
 
     f = io.StringIO()
@@ -47,6 +96,7 @@ def main():
     threading.Thread(target=run_flask, daemon=True).start()
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("stop", stop_tool))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, runner))
     print("Bot started...")
     app.run_polling()
